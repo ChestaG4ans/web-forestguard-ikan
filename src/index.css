@@ -1,0 +1,142 @@
+@import 'tailwindcss';
+@import 'leaflet/dist/leaflet.css';
+
+/* Token desain — warna & font. Jangan hardcode warna baru di komponen. */
+@theme {
+  --font-display: 'Bricolage Grotesque', sans-serif;
+  --font-sans: 'Hanken Grotesk', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* dasar */
+  --color-cream: #f6f3ec;
+  --color-parchment: #f3efe6;
+  --color-paper: #ffffff;
+  --color-mist: #fbfaf6;
+  --color-line: #ece5d6;
+  --color-line-2: #e6ded0;
+
+  /* tinta & teks */
+  --color-ink: #1e2a20;
+  --color-moss: #7c8478;
+  --color-sage: #8a9384;
+  --color-sand: #a89f8c;
+
+  /* hijau hutan */
+  --color-forest: #2f5a3e;
+  --color-canopy: #3f7256;
+  --color-ok: #2f7048;
+  --color-leaf: #5c9e6f;
+  --color-pine: #16271c;
+  --color-pine-2: #31473a;
+
+  /* aksen emas */
+  --color-gold: #b8862f;
+  --color-amber: #c99a3e;
+
+  /* status */
+  --color-warn: #d08a1e;
+  --color-danger: #c0392b;
+
+  --color-navy: #14304d;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== gerak ambien (landing & aksen) ===== */
+@keyframes fg-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-9px); }
+}
+@keyframes fg-glow {
+  0%, 100% { opacity: 0.35; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.08); }
+}
+@keyframes fg-drift {
+  from { transform: translateX(-3%); }
+  to { transform: translateX(3%); }
+}
+@keyframes fg-cloud {
+  0% { transform: translateX(0) scale(1); }
+  100% { transform: translateX(40px) scale(1.08); }
+}
+@keyframes fg-bird {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(30px, -13px); }
+  100% { transform: translate(60px, 0); }
+}
+@keyframes fg-bird-2 {
+  0% { transform: translate(0, 0); }
+  50% { transform: translate(-26px, -17px); }
+  100% { transform: translate(-52px, -2px); }
+}
+@keyframes fg-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(1.25); }
+}
+@keyframes fg-rec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+@keyframes fg-scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(2000%); }
+}
+@keyframes fg-ring {
+  0% { box-shadow: 0 0 0 0 rgba(47, 112, 72, 0.5); }
+  70% { box-shadow: 0 0 0 14px rgba(47, 112, 72, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(47, 112, 72, 0); }
+}
+
+.anim-float { animation: fg-float 6s ease-in-out infinite; }
+.anim-glow { animation: fg-glow 6s ease-in-out infinite; }
+.anim-drift { animation: fg-drift 18s ease-in-out infinite alternate; }
+.anim-pulse-dot { animation: fg-pulse 2.4s infinite; }
+.anim-rec { animation: fg-rec 1.4s infinite; }
+.anim-scan { animation: fg-scan 5s linear infinite; }
+
+/* ===== pin peta ===== */
+.fg-pin {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.fg-pin.on { background: var(--color-ok); animation: fg-ring 2.4s infinite; }
+.fg-pin.warn { background: var(--color-warn); }
+.fg-pin.off { background: var(--color-danger); }
+
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(20, 48, 77, 0.18);
+  font-family: var(--font-sans);
+}
+.leaflet-popup-content { margin: 14px 16px; }
+.leaflet-control-zoom a {
+  color: var(--color-ink) !important;
+  border-color: var(--color-line) !important;
+}
+.leaflet-bar {
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(20, 48, 77, 0.12) !important;
+}
+
+/* fokus keyboard terlihat */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-float, .anim-glow, .anim-drift, .anim-pulse-dot,
+  .anim-rec, .anim-scan, .fg-pin.on,
+  .ambient * {
+    animation: none !important;
+  }
+}
