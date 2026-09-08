@@ -7,12 +7,24 @@ const API_BASE_URL = import.meta.env.VITE_YOLO_API_URL || 'http://localhost:8000
 
 /**
  * Deteksi api/asap dari file gambar
- * @param {File} file - File gambar dari input
+ * @param {File|HTMLVideoElement} file - File gambar atau element video
  * @returns {Promise<Object>} Hasil deteksi { class, confidence, danger, ... }
  */
 export async function detectFromFile(file) {
   const formData = new FormData();
-  formData.append('file', file);
+
+  // Jika inputnya HTMLVideoElement, capture frame dulu
+  if (file instanceof HTMLVideoElement) {
+    const canvas = document.createElement('canvas');
+    canvas.width = file.videoWidth || 640;
+    canvas.height = file.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(file, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+    formData.append('file', blob, 'frame.jpg');
+  } else {
+    formData.append('file', file);
+  }
 
   const response = await fetch(`${API_BASE_URL}/detect`, {
     method: 'POST',
