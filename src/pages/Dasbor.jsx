@@ -1,17 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Thermometer, Wind, AudioWaveform, Flame } from 'lucide-react';
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-} from 'recharts';
+import { Thermometer, Wind, AudioWaveform, Flame, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useTelemetry, useNodes } from '../hooks/useData';
 import { stagger, fadeUp } from '../lib/motion';
 import StatusPill from '../components/ui/StatusPill';
 
 const fmt1 = (v) => v.toFixed(1).replace('.', ',');
 const jam = (d) => d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-const LINE = { suhu: '#b8862f', gas: '#c99a3e' };
 
 function SensorCard({ nodeId, data, isActive }) {
   if (!isActive || !data) {
@@ -26,25 +20,26 @@ function SensorCard({ nodeId, data, isActive }) {
   const { suhu, gas, flame, waktu } = data;
   const suhuWarn = suhu > 50;
   const gasWarn = gas > 1000;
+  const adaBahaya = flame || suhuWarn || gasWarn;
 
   return (
-    <div className="min-w-0 rounded-2xl border border-line bg-paper p-6">
+    <div className={`min-w-0 rounded-2xl border p-6 ${flame ? 'border-danger bg-danger/5' : 'border-line bg-paper'}`}>
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
         <div>
           <div className="mb-1 text-[0.68rem] font-bold tracking-[0.18em] text-canopy uppercase">
             Node {nodeId}
           </div>
-          <div className="flex items-center gap-2">
-            <StatusPill tone={flame ? 'danger' : (suhuWarn || gasWarn) ? 'warn' : 'ok'}>
-              {flame ? '🔥 Api!' : (suhuWarn || gasWarn) ? '⚠️ Waspada' : 'Aman'}
-            </StatusPill>
-          </div>
+          <StatusPill tone={flame ? 'danger' : adaBahaya ? 'warn' : 'ok'}>
+            {flame ? '🔥 API!' : adaBahaya ? '⚠️ Waspada' : '✓ Aman'}
+          </StatusPill>
         </div>
-        {flame && (
+        {flame ? (
           <div className="animate-pulse">
-            <Flame size={24} className="text-danger" />
+            <Flame size={28} className="text-danger" />
           </div>
+        ) : (
+          <ShieldCheck size={28} className="text-ok" />
         )}
       </div>
 
@@ -73,6 +68,32 @@ function SensorCard({ nodeId, data, isActive }) {
         <div className="flex items-center gap-2 text-[0.72rem] text-sand">
           <Wind size={12} />
           Kadar gas
+        </div>
+      </div>
+
+      {/* Flame Status */}
+      <div className="mt-4 border-t border-line pt-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {flame ? (
+              <>
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-danger">
+                  <span className="text-xs font-bold text-white">!</span>
+                </div>
+                <span className="font-bold text-danger">API TERDETEKSI</span>
+              </>
+            ) : (
+              <>
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-ok">
+                  <span className="text-xs font-bold text-white">✓</span>
+                </div>
+                <span className="font-semibold text-ok">Tidak Ada Api</span>
+              </>
+            )}
+          </div>
+          <span className={`text-lg font-bold ${flame ? 'text-danger' : 'text-ok'}`}>
+            {flame ? 'TRUE' : 'FALSE'}
+          </span>
         </div>
       </div>
 
@@ -107,13 +128,13 @@ function NodeComparison({ n1, n2 }) {
           <div key={item.label} className="mb-4 last:mb-0">
             <div className="mb-2 text-[0.82rem] font-semibold text-moss">{item.label}</div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl bg-cream p-3">
+              <div className={`rounded-xl p-3 ${item.n1Warn ? 'bg-danger/10' : 'bg-cream'}`}>
                 <div className="mb-1 text-[0.68rem] font-bold text-canopy">N1</div>
                 <div className={`font-mono text-[1.5rem] font-semibold ${item.n1Warn ? 'text-danger' : 'text-ink'}`}>
                   {item.n1Val != null ? fmt1(item.n1Val) : '--'}{item.unit}
                 </div>
               </div>
-              <div className="rounded-xl bg-cream p-3">
+              <div className={`rounded-xl p-3 ${item.n2Warn ? 'bg-danger/10' : 'bg-cream'}`}>
                 <div className="mb-1 text-[0.68rem] font-bold text-canopy">N2</div>
                 <div className={`font-mono text-[1.5rem] font-semibold ${item.n2Warn ? 'text-danger' : 'text-ink'}`}>
                   {item.n2Val != null ? fmt1(item.n2Val) : '--'}{item.unit}
@@ -135,7 +156,7 @@ export default function Dasbor() {
   // Combined status
   const adaApi = n1Data?.flame || n2Data?.flame;
   const adaWaspada = (n1Data?.suhu > 50 || n1Data?.gas > 1000) || (n2Data?.suhu > 50 || n2Data?.gas > 1000);
-  const kondisi = adaApi ? 'BAHAYA!' : adaWaspada ? 'Perlu Perhatian' : 'Kondisi Aman';
+  const kondisi = adaApi ? '🔥 BAHAYA!' : adaWaspada ? '⚠️ Perlu Perhatian' : '✓ Kondisi Aman';
   const kondisiWarna = adaApi ? 'danger' : adaWaspada ? 'amber' : 'forest';
 
   // Loading state
@@ -145,7 +166,7 @@ export default function Dasbor() {
         <div className="h-32 w-1/2 animate-pulse rounded-2xl bg-[#f0ebe0]" />
         <div className="grid grid-cols-2 gap-4">
           {[1, 2].map(i => (
-            <div key={i} className="h-48 animate-pulse rounded-2xl bg-[#f0ebe0]" />
+            <div key={i} className="h-56 animate-pulse rounded-2xl bg-[#f0ebe0]" />
           ))}
         </div>
       </motion.div>
@@ -171,7 +192,7 @@ export default function Dasbor() {
           <div className="h-[46px] w-0.5 bg-[#c9c0ad]" />
           <div>
             <div className={`flex items-center gap-2 text-[0.7rem] font-bold tracking-[0.16em] uppercase text-${kondisiWarna}`}>
-              <span className={`h-2 w-2 rounded-full bg-${kondisiWarna}`} />
+              <span className={`h-2 w-2 rounded-full bg-${kondisiWarna} ${adaApi ? 'animate-pulse' : ''}`} />
               {kondisi}
             </div>
             <div className="mt-1.5 text-[0.82rem] text-sage">
@@ -181,8 +202,23 @@ export default function Dasbor() {
         </div>
       </motion.div>
 
+      {/* Flame Alert Banner */}
+      {adaApi && (
+        <motion.div
+          variants={fadeUp}
+          className="mt-6 flex items-center justify-center gap-3 rounded-2xl border-2 border-danger bg-danger/10 p-6"
+        >
+          <Flame size={32} className="animate-pulse text-danger" />
+          <div>
+            <div className="text-center text-[1.2rem] font-bold text-danger">PERINGATAN!</div>
+            <div className="text-center text-[0.9rem] text-danger">Api terdeteksi di salah satu node!</div>
+          </div>
+          <Flame size={32} className="animate-pulse text-danger" />
+        </motion.div>
+      )}
+
       {/* sensor cards */}
-      <motion.section variants={fadeUp} className="mt-8">
+      <motion.section variants={fadeUp} className="mt-6">
         <div className="mb-4">
           <div className="mb-1.5 text-[0.68rem] font-bold tracking-[0.18em] text-canopy uppercase">
             Telemetri Langsung
@@ -219,8 +255,12 @@ export default function Dasbor() {
               >
                 <div>
                   <span className="font-bold">{n.name}</span>
-                  <div className="text-[0.72rem] text-[#7f8c72]">
-                    Suhu: {n.suhu?.toFixed(1) || '--'}°C · Gas: {n.gas || '--'} ppm
+                  <div className="flex items-center gap-3 text-[0.72rem] text-[#7f8c72]">
+                    <span>Suhu: {n.suhu?.toFixed(1) || '--'}°C</span>
+                    <span>Gas: {n.gas || '--'} ppm</span>
+                    <span className={n.flame ? 'text-danger font-bold' : 'text-ok'}>
+                      🔥 {n.flame ? 'TRUE' : 'FALSE'}
+                    </span>
                   </div>
                 </div>
                 <span className="inline-flex items-center gap-2 font-semibold text-[#cdd4c6]">
@@ -237,12 +277,6 @@ export default function Dasbor() {
 
           <div className="mt-auto border-t border-white/8 pt-4">
             <div className="text-[0.68rem] text-[#7f8c72]">
-              {adaApi && (
-                <div className="mb-2 flex items-center gap-2 text-danger">
-                  <Flame size={14} />
-                  <span className="font-bold">PERINGATAN: API TERDETEKSI!</span>
-                </div>
-              )}
               Data diperbarui otomatis setiap 3 detik
             </div>
           </div>
