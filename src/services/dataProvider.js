@@ -1,17 +1,18 @@
 /*
  * Lapisan data aplikasi. Semua halaman membaca data lewat fungsi di sini.
- * Menggunakan Firebase Realtime Database sebagai backend (ForestGuard / FireForest PKM 2026).
+ * Menggunakan Firebase REST API sebagai backend (ForestGuard / FireForest PKM 2026).
  *
- * Skema Realtime Database (dari backend):
+ * Pake REST API karena Cloudflare Pages block Firebase RTDB WebSocket connection.
+ *
+ * Skema Realtime Database:
  *   /forest_data/{nodeId}   { flame, ppm, suhu }
  *   /logs/{logId}           { node, suhu, ppm, flame, timestamp }
  */
 
-import { db } from './firebase';
-import { ref, onValue, set, update, push } from 'firebase/database';
+const FIREBASE_RTDB_URL = "https://fireforest-fc4ec-default-rtdb.asia-southeast1.firebasedatabase.app";
 
 // ============================================================
-// DATA MOCK — fallback saat Realtime DB belum ada data
+// DATA MOCK — fallback saat REST API gagal
 // ============================================================
 
 const MOCK_TELEMETRY = {
@@ -63,29 +64,74 @@ const MOCK_ALERTS = [
 ];
 
 // ============================================================
+// HELPER: Fetch dari Firebase REST API
+// ============================================================
+
+async function fetchFirebase(path) {
+  try {
+    const response = await fetch(`${FIREBASE_RTDB_URL}/${path}.json`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.warn(`Firebase REST error for ${path}:`, error);
+    return null;
+  }
+}
+
+// ============================================================
+// POLLING UNTUK REALTIME
+// ============================================================
+
+let pollingIntervals = {};
+
+// Cleanup intervals on unmount
+export function cleanupAllSubscriptions() {
+  Object.values(pollingIntervals).forEach(interval => clearInterval(interval));
+  Object.keys(pollingIntervals).forEach(key => delete pollingIntervals[key]);
+}
+
+// ============================================================
 // TELEMETRI — satu node (Dasbor)
 // ============================================================
 
 export function subscribeTelemetry(nodeId, callback) {
-  const nodeRef = ref(db, `forest_data/${nodeId}`);
-
-  const unsubscribe = onValue(nodeRef, (snapshot) => {
-    const data = snapshot.val();
+  // Initial fetch
+  fetchFirebase(`forest_data/${nodeId}`).then(data => {
     if (data) {
       callback({
         suhu: data.suhu ?? 0,
-        kelembapan: 0, // RTDB kamu nggak punya kelembapan
+        kelembapan: 0,
         gas: data.ppm ?? 0,
         flame: data.flame ?? false,
         waktu: new Date()
       });
     } else {
-      // Fallback: pakai data mock kalau belum ada
       callback({ ...MOCK_TELEMETRY, waktu: new Date() });
     }
   });
 
-  return unsubscribe;
+  // Poll setiap 3 detik
+  const interval = setInterval(async () => {
+    const data = await fetchFirebase(`forest_data/${nodeId}`);
+    if (data) {
+      callback({
+        suhu: data.suhu ?? 0,
+        kelembapan: 0,
+        gas: data.ppm ?? 0,
+        flame: data.flame ?? false,
+        waktu: new Date()
+      });
+    }
+  }, 3000);
+
+  pollingIntervals[`telemetry_${nodeId}`] = interval;
+
+  return () => {
+    clearInterval(interval);
+    delete pollingIntervals[`telemetry_${nodeId}`];
+  };
 }
 
 // ============================================================
@@ -93,52 +139,87 @@ export function subscribeTelemetry(nodeId, callback) {
 // ============================================================
 
 export function subscribeNodes(callback) {
-  const forestDataRef = ref(db, 'forest_data');
+  // Initial fetch
+  fetchFirebase('forest_data').then(data => {
+    if (data && typeof data === 'object') {
+      const nodes = Object.entries(data).map(([id, nodeData]) => {
+        let status = 'on';
+        let statusLabel = 'Aktif';
 
-  const unsubscribe = onValue(forestDataRef, (snapshot) => {
-    const data = snapshot.val();
+        if (nodeData.flame === true || nodeData.flame === 1) {
+          status = 'warn';
+          statusLabel = 'Api Terdeteksi!';
+        } else if (!nodeData.suhu && !nodeData.ppm) {
+          status = 'off';
+          statusLabel = 'Offline';
+        }
 
-    if (!data) {
-      // Fallback: pakai data mock
+        return {
+          id,
+          name: `Node ${id}`,
+          area: `Lokasi ${id}`,
+          lat: id === 'N1' ? -1.034 : -1.045,
+          lng: id === 'N1' ? 116.735 : 116.760,
+          status,
+          statusLabel,
+          radiusMeters: 1000,
+          suhu: nodeData.suhu ?? 0,
+          kelembapan: 0,
+          gas: nodeData.ppm ?? 0,
+          flame: nodeData.flame ?? false,
+          streamUrl: null,
+          lastSeen: 'baru saja'
+        };
+      });
+      callback(nodes);
+    } else {
       callback([...MOCK_NODES]);
-      return;
     }
-
-    const nodes = Object.entries(data).map(([id, nodeData]) => {
-      // Tentukan status dari flame detection
-      let status = 'on';
-      let statusLabel = 'Aktif';
-
-      if (nodeData.flame === true) {
-        status = 'warn';
-        statusLabel = 'Api Terdeteksi!';
-      } else if (!nodeData.suhu && !nodeData.ppm) {
-        status = 'off';
-        statusLabel = 'Offline';
-      }
-
-      return {
-        id,
-        name: `Node ${id}`,
-        area: `Lokasi ${id}`,
-        lat: id === 'N1' ? -1.034 : -1.045,
-        lng: id === 'N1' ? 116.735 : 116.760,
-        status,
-        statusLabel,
-        radiusMeters: 1000,
-        suhu: nodeData.suhu ?? 0,
-        kelembapan: 0,
-        gas: nodeData.ppm ?? 0,
-        flame: nodeData.flame ?? false,
-        streamUrl: null,
-        lastSeen: 'baru saja'
-      };
-    });
-
-    callback(nodes);
   });
 
-  return unsubscribe;
+  // Poll setiap 3 detik
+  const interval = setInterval(async () => {
+    const data = await fetchFirebase('forest_data');
+    if (data && typeof data === 'object') {
+      const nodes = Object.entries(data).map(([id, nodeData]) => {
+        let status = 'on';
+        let statusLabel = 'Aktif';
+
+        if (nodeData.flame === true || nodeData.flame === 1) {
+          status = 'warn';
+          statusLabel = 'Api Terdeteksi!';
+        } else if (!nodeData.suhu && !nodeData.ppm) {
+          status = 'off';
+          statusLabel = 'Offline';
+        }
+
+        return {
+          id,
+          name: `Node ${id}`,
+          area: `Lokasi ${id}`,
+          lat: id === 'N1' ? -1.034 : -1.045,
+          lng: id === 'N1' ? 116.735 : 116.760,
+          status,
+          statusLabel,
+          radiusMeters: 1000,
+          suhu: nodeData.suhu ?? 0,
+          kelembapan: 0,
+          gas: nodeData.ppm ?? 0,
+          flame: nodeData.flame ?? false,
+          streamUrl: null,
+          lastSeen: 'baru saja'
+        };
+      });
+      callback(nodes);
+    }
+  }, 3000);
+
+  pollingIntervals['nodes'] = interval;
+
+  return () => {
+    clearInterval(interval);
+    delete pollingIntervals['nodes'];
+  };
 }
 
 // ============================================================
@@ -146,56 +227,99 @@ export function subscribeNodes(callback) {
 // ============================================================
 
 export function subscribeAlerts(callback) {
-  const logsRef = ref(db, 'logs');
+  // Initial fetch
+  fetchFirebase('logs').then(data => {
+    if (data && typeof data === 'object') {
+      const alerts = Object.entries(data)
+        .map(([id, log]) => {
+          let cat = 'info';
+          let title = 'Sensor Normal';
+          let msg = `Node ${log.node}: Suhu ${log.suhu}°C, PPM ${log.ppm}`;
 
-  const unsubscribe = onValue(logsRef, (snapshot) => {
-    const data = snapshot.val();
+          if (log.flame === 1) {
+            cat = 'critical';
+            title = '🔥 Api Terdeteksi!';
+            msg = `Node ${log.node} mendeteksi api! Suhu: ${log.suhu}°C, PPM: ${log.ppm}`;
+          } else if (log.ppm > 1000) {
+            cat = 'warning';
+            title = '⚠️ Gas Berlebih';
+            msg = `Node ${log.node}: Kadar gas ${log.ppm} PPM`;
+          } else if (log.suhu > 50) {
+            cat = 'warning';
+            title = '⚠️ Suhu Tinggi';
+            msg = `Node ${log.node}: Suhu ${log.suhu}°C`;
+          }
 
-    if (!data) {
+          return {
+            id,
+            cat,
+            title,
+            msg,
+            time: log.timestamp ? new Date(log.timestamp).toLocaleString('id-ID') : 'baru saja',
+            read: false,
+            flame: log.flame,
+            suhu: log.suhu,
+            ppm: log.ppm
+          };
+        })
+        .sort((a, b) => new Date(b.time) - new Date(a.time))
+        .slice(0, 50);
+
+      callback(alerts);
+    } else {
       callback([...MOCK_ALERTS]);
-      return;
     }
-
-    // Convert logs ke alerts
-    const alerts = Object.entries(data)
-      .map(([id, log]) => {
-        let cat = 'info';
-        let title = 'Sensor Normal';
-        let msg = `Node ${log.node}: Suhu ${log.suhu}°C, PPM ${log.ppm}`;
-
-        if (log.flame === 1) {
-          cat = 'critical';
-          title = '🔥 Api Terdeteksi!';
-          msg = `Node ${log.node} mendeteksi api! Suhu: ${log.suhu}°C, PPM: ${log.ppm}`;
-        } else if (log.ppm > 1000) {
-          cat = 'warning';
-          title = '⚠️ Gas Berlebih';
-          msg = `Node ${log.node}: Kadar gas ${log.ppm} PPM`;
-        } else if (log.suhu > 50) {
-          cat = 'warning';
-          title = '⚠️ Suhu Tinggi';
-          msg = `Node ${log.node}: Suhu ${log.suhu}°C`;
-        }
-
-        return {
-          id,
-          cat,
-          title,
-          msg,
-          time: log.timestamp ? new Date(log.timestamp).toLocaleString('id-ID') : 'baru saja',
-          read: false,
-          flame: log.flame,
-          suhu: log.suhu,
-          ppm: log.ppm
-        };
-      })
-      .sort((a, b) => new Date(b.time) - new Date(a.time))
-      .slice(0, 50);
-
-    callback(alerts);
   });
 
-  return unsubscribe;
+  // Poll setiap 5 detik
+  const interval = setInterval(async () => {
+    const data = await fetchFirebase('logs');
+    if (data && typeof data === 'object') {
+      const alerts = Object.entries(data)
+        .map(([id, log]) => {
+          let cat = 'info';
+          let title = 'Sensor Normal';
+          let msg = `Node ${log.node}: Suhu ${log.suhu}°C, PPM ${log.ppm}`;
+
+          if (log.flame === 1) {
+            cat = 'critical';
+            title = '🔥 Api Terdeteksi!';
+            msg = `Node ${log.node} mendeteksi api! Suhu: ${log.suhu}°C, PPM: ${log.ppm}`;
+          } else if (log.ppm > 1000) {
+            cat = 'warning';
+            title = '⚠️ Gas Berlebih';
+            msg = `Node ${log.node}: Kadar gas ${log.ppm} PPM`;
+          } else if (log.suhu > 50) {
+            cat = 'warning';
+            title = '⚠️ Suhu Tinggi';
+            msg = `Node ${log.node}: Suhu ${log.suhu}°C`;
+          }
+
+          return {
+            id,
+            cat,
+            title,
+            msg,
+            time: log.timestamp ? new Date(log.timestamp).toLocaleString('id-ID') : 'baru saja',
+            read: false,
+            flame: log.flame,
+            suhu: log.suhu,
+            ppm: log.ppm
+          };
+        })
+        .sort((a, b) => new Date(b.time) - new Date(a.time))
+        .slice(0, 50);
+
+      callback(alerts);
+    }
+  }, 5000);
+
+  pollingIntervals['alerts'] = interval;
+
+  return () => {
+    clearInterval(interval);
+    delete pollingIntervals['alerts'];
+  };
 }
 
 // ============================================================
@@ -203,8 +327,7 @@ export function subscribeAlerts(callback) {
 // ============================================================
 
 export async function markAllAlertsRead() {
-  // Firebase RTDB logs sifatnya read-only dari sensor
-  // Jadi markAllAlertsRead nggak perlu update apa-apa
+  // Logs sifatnya read-only dari sensor
   console.log('markAllAlertsRead called - logs are sensor data, skipping');
 }
 
@@ -225,10 +348,4 @@ export function getThresholds() {
 
 export async function saveThresholds(values) {
   localStorage.setItem(THRESHOLD_KEY, JSON.stringify(values));
-  // Simpan juga ke Realtime DB
-  try {
-    await set(ref(db, 'config/thresholds'), values);
-  } catch (e) {
-    console.warn('Gagal simpan thresholds ke Realtime DB:', e);
-  }
 }
