@@ -1,27 +1,18 @@
 /*
  * Lapisan data aplikasi. Semua halaman membaca data lewat fungsi di sini.
- * Menggunakan Firebase Firestore sebagai backend (ForestGuard / FireForest PKM 2026).
+ * Menggunakan Firebase Realtime Database sebagai backend (ForestGuard / FireForest PKM 2026).
  *
- * Skema Firestore:
- *   sensor_nodes/{id}   { name, area, lat, lng, status, suhu, kelembapan, asap, lastSeen, streamUrl }
- *   alerts_history/{id} { cat, title, msg, createdAt, read }
- *   config/thresholds   { suhuMax, gasMax, kelembapanMin }
+ * Skema Realtime Database:
+ *   /sensor_nodes/{nodeId}  { name, area, lat, lng, status, suhu, kelembapan, gas, lastSeen, streamUrl }
+ *   /alerts_history/{alertId} { cat, title, msg, read, createdAt }
+ *   /config/thresholds        { suhuMax, gasMax, kelembapanMin }
  */
 
 import { db } from './firebase';
-import {
-  doc,
-  onSnapshot,
-  collection,
-  query,
-  orderBy,
-  limit,
-  updateDoc,
-  getDocs
-} from 'firebase/firestore';
+import { ref, onValue, set, update } from 'firebase/database';
 
 // ============================================================
-// DATA MOCK — fallback saat Firestore belum ada data
+// DATA MOCK — fallback saat Realtime DB belum ada data
 // ============================================================
 
 const MOCK_TELEMETRY = {
@@ -91,19 +82,19 @@ const MOCK_ALERTS = [
 // ============================================================
 
 export function subscribeTelemetry(nodeId, callback) {
-  const docRef = doc(db, "sensor_nodes", nodeId);
+  const nodeRef = ref(db, `sensor_nodes/${nodeId}`);
 
-  const unsubscribe = onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
+  const unsubscribe = onValue(nodeRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
       callback({
         suhu: data.suhu ?? 0,
         kelembapan: data.kelembapan ?? 0,
-        gas: data.asap ?? data.gas ?? 0,
+        gas: data.gas ?? data.asap ?? 0,
         waktu: new Date()
       });
     } else {
-      // Fallback: pakai data mock kalau belum ada di Firestore
+      // Fallback: pakai data mock kalau belum ada di Realtime DB
       callback({ ...MOCK_TELEMETRY, waktu: new Date() });
     }
   });
@@ -116,47 +107,49 @@ export function subscribeTelemetry(nodeId, callback) {
 // ============================================================
 
 export function subscribeNodes(callback) {
-  const nodesCol = collection(db, "sensor_nodes");
+  const nodesRef = ref(db, 'sensor_nodes');
 
-  const unsubscribe = onSnapshot(nodesCol, (snapshot) => {
-    if (snapshot.empty) {
-      // Fallback: pakai data mock kalau belum ada di Firestore
+  const unsubscribe = onValue(nodesRef, (snapshot) => {
+    const data = snapshot.val();
+
+    if (!data) {
+      // Fallback: pakai data mock kalau belum ada di Realtime DB
       callback([...MOCK_NODES]);
       return;
     }
 
-    const nodes = snapshot.docs.map(doc => {
-      const data = doc.data();
+    const nodes = Object.entries(data).map(([id, nodeData]) => {
       let status = 'on';
       let statusLabel = 'Aktif · Aman';
 
-      if (data.status === 'warning') {
+      if (nodeData.status === 'warning') {
         status = 'warn';
         statusLabel = 'Aktif · Waspada';
-      } else if (data.status === 'fire risk' || data.status === 'danger') {
+      } else if (nodeData.status === 'fire risk' || nodeData.status === 'danger') {
         status = 'off';
         statusLabel = 'Bahaya!';
-      } else if (!data.suhu) {
+      } else if (!nodeData.suhu) {
         status = 'off';
         statusLabel = 'Offline';
       }
 
       return {
-        id: doc.id,
-        name: data.name || doc.id,
-        area: data.area || '',
-        lat: data.lat || 0,
-        lng: data.lng || 0,
+        id,
+        name: nodeData.name || id,
+        area: nodeData.area || '',
+        lat: nodeData.lat || 0,
+        lng: nodeData.lng || 0,
         status,
         statusLabel,
-        radiusMeters: data.radiusMeters || 1000,
-        suhu: data.suhu,
-        kelembapan: data.kelembapan,
-        gas: data.asap || data.gas,
-        streamUrl: data.streamUrl || null,
-        lastSeen: data.lastSeen || 'baru saja'
+        radiusMeters: nodeData.radiusMeters || 1000,
+        suhu: nodeData.suhu,
+        kelembapan: nodeData.kelembapan,
+        gas: nodeData.gas || nodeData.asap,
+        streamUrl: nodeData.streamUrl || null,
+        lastSeen: nodeData.lastSeen || 'baru saja'
       };
     });
+
     callback(nodes);
   });
 
@@ -168,29 +161,31 @@ export function subscribeNodes(callback) {
 // ============================================================
 
 export function subscribeAlerts(callback) {
-  const alertsCol = collection(db, "alerts_history");
-  const q = query(alertsCol, orderBy("createdAt", "desc"), limit(50));
+  const alertsRef = ref(db, 'alerts_history');
 
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    if (snapshot.empty) {
-      // Fallback: pakai data mock kalau belum ada di Firestore
+  const unsubscribe = onValue(alertsRef, (snapshot) => {
+    const data = snapshot.val();
+
+    if (!data) {
+      // Fallback: pakai data mock kalau belum ada di Realtime DB
       callback([...MOCK_ALERTS]);
       return;
     }
 
-    const alerts = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        cat: data.cat || 'info',
-        title: data.title || '',
-        msg: data.msg || '',
-        time: data.createdAt
-          ? new Date(data.createdAt.seconds * 1000).toLocaleString('id-ID')
+    const alerts = Object.entries(data)
+      .map(([id, alertData]) => ({
+        id,
+        cat: alertData.cat || 'info',
+        title: alertData.title || '',
+        msg: alertData.msg || '',
+        time: alertData.createdAt
+          ? new Date(alertData.createdAt).toLocaleString('id-ID')
           : 'baru saja',
-        read: data.read || false
-      };
-    });
+        read: alertData.read || false
+      }))
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 50);
+
     callback(alerts);
   });
 
@@ -202,15 +197,31 @@ export function subscribeAlerts(callback) {
 // ============================================================
 
 export async function markAllAlertsRead() {
-  const alertsCol = collection(db, "alerts_history");
-  const q = query(alertsCol);
-  const snapshot = await getDocs(q);
+  const alertsRef = ref(db, 'alerts_history');
 
-  const updates = snapshot.docs
-    .filter(doc => !doc.data().read)
-    .map(doc => updateDoc(doc.ref, { read: true }));
+  return new Promise((resolve, reject) => {
+    onValue(alertsRef, async (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        resolve();
+        return;
+      }
 
-  await Promise.all(updates);
+      const updates = {};
+      Object.entries(data).forEach(([id, alert]) => {
+        if (!alert.read) {
+          updates[`alerts_history/${id}/read`] = true;
+        }
+      });
+
+      try {
+        await update(ref(db), updates);
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    }, { onlyOnce: true });
+  });
 }
 
 // ============================================================
@@ -230,11 +241,10 @@ export function getThresholds() {
 
 export async function saveThresholds(values) {
   localStorage.setItem(THRESHOLD_KEY, JSON.stringify(values));
-  // Simpan juga ke Firestore
+  // Simpan juga ke Realtime DB
   try {
-    const { doc, setDoc } = await import('firebase/firestore');
-    await setDoc(doc(db, "config", "thresholds"), values, { merge: true });
+    await set(ref(db, 'config/thresholds'), values);
   } catch (e) {
-    console.warn('Gagal simpan thresholds ke Firestore:', e);
+    console.warn('Gagal simpan thresholds ke Realtime DB:', e);
   }
 }
