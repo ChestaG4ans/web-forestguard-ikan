@@ -1,18 +1,18 @@
 /*
  * Lapisan data aplikasi. Semua halaman membaca data lewat fungsi di sini.
- * Menggunakan Firebase REST API sebagai backend (ForestGuard / FireForest PKM 2026).
+ * Menggunakan Cloudflare Worker Proxy untuk akses Firebase RTDB (ForestGuard PKM 2026).
  *
- * Pake REST API karena Cloudflare Pages block Firebase RTDB WebSocket connection.
+ * Worker proxy menghindari CORS blocking dari Cloudflare Pages ke Firebase RTDB.
  *
  * Skema Realtime Database:
  *   /forest_data/{nodeId}   { flame, ppm, suhu }
  *   /logs/{logId}           { node, suhu, ppm, flame, timestamp }
  */
 
-const FIREBASE_RTDB_URL = "https://fireforest-fc4ec-default-rtdb.asia-southeast1.firebasedatabase.app";
+const API_BASE_URL = ""; // Kosongkan - pakai relative path ke Worker
 
 // ============================================================
-// DATA MOCK — fallback saat REST API gagal
+// DATA MOCK — fallback saat API gagal
 // ============================================================
 
 const MOCK_TELEMETRY = {
@@ -49,7 +49,7 @@ const MOCK_NODES = [
     status: 'warn',
     statusLabel: 'Aktif',
     radiusMeters: 800,
-    suhu: 25.4,
+    suhu: 125,
     kelembapan: 0,
     gas: 0,
     flame: false,
@@ -64,18 +64,22 @@ const MOCK_ALERTS = [
 ];
 
 // ============================================================
-// HELPER: Fetch dari Firebase REST API
+// HELPER: Fetch dari Worker Proxy
 // ============================================================
 
-async function fetchFirebase(path) {
+async function fetchAPI(path) {
   try {
-    const response = await fetch(`${FIREBASE_RTDB_URL}/${path}.json`);
+    const response = await fetch(`/api/${path}`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
-    return await response.json();
+    const data = await response.json();
+
+    // Worker returns null for empty paths
+    if (data === null) return null;
+    return data;
   } catch (error) {
-    console.warn(`Firebase REST error for ${path}:`, error);
+    console.warn(`API error for ${path}:`, error);
     return null;
   }
 }
@@ -86,7 +90,6 @@ async function fetchFirebase(path) {
 
 let pollingIntervals = {};
 
-// Cleanup intervals on unmount
 export function cleanupAllSubscriptions() {
   Object.values(pollingIntervals).forEach(interval => clearInterval(interval));
   Object.keys(pollingIntervals).forEach(key => delete pollingIntervals[key]);
@@ -98,7 +101,7 @@ export function cleanupAllSubscriptions() {
 
 export function subscribeTelemetry(nodeId, callback) {
   // Initial fetch
-  fetchFirebase(`forest_data/${nodeId}`).then(data => {
+  fetchAPI(`forest_data/${nodeId}`).then(data => {
     if (data) {
       callback({
         suhu: data.suhu ?? 0,
@@ -114,7 +117,7 @@ export function subscribeTelemetry(nodeId, callback) {
 
   // Poll setiap 3 detik
   const interval = setInterval(async () => {
-    const data = await fetchFirebase(`forest_data/${nodeId}`);
+    const data = await fetchAPI(`forest_data/${nodeId}`);
     if (data) {
       callback({
         suhu: data.suhu ?? 0,
@@ -140,7 +143,7 @@ export function subscribeTelemetry(nodeId, callback) {
 
 export function subscribeNodes(callback) {
   // Initial fetch
-  fetchFirebase('forest_data').then(data => {
+  fetchAPI('forest_data').then(data => {
     if (data && typeof data === 'object') {
       const nodes = Object.entries(data).map(([id, nodeData]) => {
         let status = 'on';
@@ -179,7 +182,7 @@ export function subscribeNodes(callback) {
 
   // Poll setiap 3 detik
   const interval = setInterval(async () => {
-    const data = await fetchFirebase('forest_data');
+    const data = await fetchAPI('forest_data');
     if (data && typeof data === 'object') {
       const nodes = Object.entries(data).map(([id, nodeData]) => {
         let status = 'on';
@@ -228,7 +231,7 @@ export function subscribeNodes(callback) {
 
 export function subscribeAlerts(callback) {
   // Initial fetch
-  fetchFirebase('logs').then(data => {
+  fetchAPI('logs').then(data => {
     if (data && typeof data === 'object') {
       const alerts = Object.entries(data)
         .map(([id, log]) => {
@@ -273,7 +276,7 @@ export function subscribeAlerts(callback) {
 
   // Poll setiap 5 detik
   const interval = setInterval(async () => {
-    const data = await fetchFirebase('logs');
+    const data = await fetchAPI('logs');
     if (data && typeof data === 'object') {
       const alerts = Object.entries(data)
         .map(([id, log]) => {
