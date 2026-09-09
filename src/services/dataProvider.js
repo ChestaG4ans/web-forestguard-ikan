@@ -2,79 +2,64 @@
  * Lapisan data aplikasi. Semua halaman membaca data lewat fungsi di sini.
  * Menggunakan Firebase Realtime Database sebagai backend (ForestGuard / FireForest PKM 2026).
  *
- * Skema Realtime Database:
- *   /sensor_nodes/{nodeId}  { name, area, lat, lng, status, suhu, kelembapan, gas, lastSeen, streamUrl }
- *   /alerts_history/{alertId} { cat, title, msg, read, createdAt }
- *   /config/thresholds        { suhuMax, gasMax, kelembapanMin }
+ * Skema Realtime Database (dari backend):
+ *   /forest_data/{nodeId}   { flame, ppm, suhu }
+ *   /logs/{logId}           { node, suhu, ppm, flame, timestamp }
  */
 
 import { db } from './firebase';
-import { ref, onValue, set, update } from 'firebase/database';
+import { ref, onValue, set, update, push } from 'firebase/database';
 
 // ============================================================
 // DATA MOCK — fallback saat Realtime DB belum ada data
 // ============================================================
 
 const MOCK_TELEMETRY = {
-  suhu: 31.3,
-  kelembapan: 71,
-  gas: 62,
+  suhu: 31.9,
+  kelembapan: 0,
+  gas: 0,
+  flame: false,
   waktu: new Date()
 };
 
 const MOCK_NODES = [
   {
-    id: 'node_1',
-    name: 'Node 01 — Kawasan Inti',
-    area: 'IKN Nusantara',
+    id: 'N1',
+    name: 'Node 01',
+    area: 'Lokasi N1',
     lat: -1.034,
     lng: 116.735,
     status: 'on',
-    statusLabel: 'Aktif · Aman',
+    statusLabel: 'Aktif',
     radiusMeters: 1000,
-    suhu: 31.3,
-    kelembapan: 71,
-    gas: 62,
+    suhu: 31.9,
+    kelembapan: 0,
+    gas: 0,
+    flame: false,
     streamUrl: null,
     lastSeen: 'baru saja'
   },
   {
-    id: 'node_2',
-    name: 'Node 02 — Koridor Hijau',
-    area: 'IKN Timur',
+    id: 'N2',
+    name: 'Node 02',
+    area: 'Lokasi N2',
     lat: -1.045,
     lng: 116.760,
     status: 'warn',
-    statusLabel: 'Aktif · Waspada',
+    statusLabel: 'Aktif',
     radiusMeters: 800,
-    suhu: 37.1,
-    kelembapan: 48,
-    gas: 95,
-    streamUrl: null,
-    lastSeen: '3 menit lalu'
-  },
-  {
-    id: 'node_3',
-    name: 'Node 03 — Zona Transisi',
-    area: 'IKN Barat',
-    lat: -1.020,
-    lng: 116.710,
-    status: 'on',
-    statusLabel: 'Aktif · Aman',
-    radiusMeters: 1200,
-    suhu: 29.8,
-    kelembapan: 76,
-    gas: 45,
+    suhu: 25.4,
+    kelembapan: 0,
+    gas: 0,
+    flame: false,
     streamUrl: null,
     lastSeen: 'baru saja'
   }
 ];
 
 const MOCK_ALERTS = [
-  { id: 'a1', cat: 'warning', title: 'Suhu Meningkat', msg: 'Node 02 mendeteksi suhu 37.1°C — melampaui ambang batas normal.', time: '26 Agt 2026, 14:32', read: false },
-  { id: 'a2', cat: 'info', title: 'Sinkronisasi Berhasil', msg: 'Node 01 berhasil sinkronisasi data dengan server.', time: '26 Agt 2026, 14:28', read: false },
-  { id: 'a3', cat: 'info', title: 'Node 03 Online', msg: 'Node 03 kembali aktif setelah pemeliharaan.', time: '26 Agt 2026, 13:45', read: true },
-  { id: 'a4', cat: 'critical', title: 'Kelembapan Rendah', msg: 'Node 02 kelembapan 48% — risiko kebakaran meningkat!', time: '26 Agt 2026, 12:10', read: true },
+  { id: 'a1', cat: 'warning', title: 'Flame Terdeteksi', msg: 'Node N1 mendeteksi api!', time: new Date().toISOString(), read: false },
+  { id: 'a2', cat: 'info', title: 'Sensor Normal', msg: 'Semua sensor berjalan normal.', time: new Date().toISOString(), read: true },
 ];
 
 // ============================================================
@@ -82,19 +67,20 @@ const MOCK_ALERTS = [
 // ============================================================
 
 export function subscribeTelemetry(nodeId, callback) {
-  const nodeRef = ref(db, `sensor_nodes/${nodeId}`);
+  const nodeRef = ref(db, `forest_data/${nodeId}`);
 
   const unsubscribe = onValue(nodeRef, (snapshot) => {
     const data = snapshot.val();
     if (data) {
       callback({
         suhu: data.suhu ?? 0,
-        kelembapan: data.kelembapan ?? 0,
-        gas: data.gas ?? data.asap ?? 0,
+        kelembapan: 0, // RTDB kamu nggak punya kelembapan
+        gas: data.ppm ?? 0,
+        flame: data.flame ?? false,
         waktu: new Date()
       });
     } else {
-      // Fallback: pakai data mock kalau belum ada di Realtime DB
+      // Fallback: pakai data mock kalau belum ada
       callback({ ...MOCK_TELEMETRY, waktu: new Date() });
     }
   });
@@ -107,46 +93,45 @@ export function subscribeTelemetry(nodeId, callback) {
 // ============================================================
 
 export function subscribeNodes(callback) {
-  const nodesRef = ref(db, 'sensor_nodes');
+  const forestDataRef = ref(db, 'forest_data');
 
-  const unsubscribe = onValue(nodesRef, (snapshot) => {
+  const unsubscribe = onValue(forestDataRef, (snapshot) => {
     const data = snapshot.val();
 
     if (!data) {
-      // Fallback: pakai data mock kalau belum ada di Realtime DB
+      // Fallback: pakai data mock
       callback([...MOCK_NODES]);
       return;
     }
 
     const nodes = Object.entries(data).map(([id, nodeData]) => {
+      // Tentukan status dari flame detection
       let status = 'on';
-      let statusLabel = 'Aktif · Aman';
+      let statusLabel = 'Aktif';
 
-      if (nodeData.status === 'warning') {
+      if (nodeData.flame === true) {
         status = 'warn';
-        statusLabel = 'Aktif · Waspada';
-      } else if (nodeData.status === 'fire risk' || nodeData.status === 'danger') {
-        status = 'off';
-        statusLabel = 'Bahaya!';
-      } else if (!nodeData.suhu) {
+        statusLabel = 'Api Terdeteksi!';
+      } else if (!nodeData.suhu && !nodeData.ppm) {
         status = 'off';
         statusLabel = 'Offline';
       }
 
       return {
         id,
-        name: nodeData.name || id,
-        area: nodeData.area || '',
-        lat: nodeData.lat || 0,
-        lng: nodeData.lng || 0,
+        name: `Node ${id}`,
+        area: `Lokasi ${id}`,
+        lat: id === 'N1' ? -1.034 : -1.045,
+        lng: id === 'N1' ? 116.735 : 116.760,
         status,
         statusLabel,
-        radiusMeters: nodeData.radiusMeters || 1000,
-        suhu: nodeData.suhu,
-        kelembapan: nodeData.kelembapan,
-        gas: nodeData.gas || nodeData.asap,
-        streamUrl: nodeData.streamUrl || null,
-        lastSeen: nodeData.lastSeen || 'baru saja'
+        radiusMeters: 1000,
+        suhu: nodeData.suhu ?? 0,
+        kelembapan: 0,
+        gas: nodeData.ppm ?? 0,
+        flame: nodeData.flame ?? false,
+        streamUrl: null,
+        lastSeen: 'baru saja'
       };
     });
 
@@ -161,28 +146,49 @@ export function subscribeNodes(callback) {
 // ============================================================
 
 export function subscribeAlerts(callback) {
-  const alertsRef = ref(db, 'alerts_history');
+  const logsRef = ref(db, 'logs');
 
-  const unsubscribe = onValue(alertsRef, (snapshot) => {
+  const unsubscribe = onValue(logsRef, (snapshot) => {
     const data = snapshot.val();
 
     if (!data) {
-      // Fallback: pakai data mock kalau belum ada di Realtime DB
       callback([...MOCK_ALERTS]);
       return;
     }
 
+    // Convert logs ke alerts
     const alerts = Object.entries(data)
-      .map(([id, alertData]) => ({
-        id,
-        cat: alertData.cat || 'info',
-        title: alertData.title || '',
-        msg: alertData.msg || '',
-        time: alertData.createdAt
-          ? new Date(alertData.createdAt).toLocaleString('id-ID')
-          : 'baru saja',
-        read: alertData.read || false
-      }))
+      .map(([id, log]) => {
+        let cat = 'info';
+        let title = 'Sensor Normal';
+        let msg = `Node ${log.node}: Suhu ${log.suhu}°C, PPM ${log.ppm}`;
+
+        if (log.flame === 1) {
+          cat = 'critical';
+          title = '🔥 Api Terdeteksi!';
+          msg = `Node ${log.node} mendeteksi api! Suhu: ${log.suhu}°C, PPM: ${log.ppm}`;
+        } else if (log.ppm > 1000) {
+          cat = 'warning';
+          title = '⚠️ Gas Berlebih';
+          msg = `Node ${log.node}: Kadar gas ${log.ppm} PPM`;
+        } else if (log.suhu > 50) {
+          cat = 'warning';
+          title = '⚠️ Suhu Tinggi';
+          msg = `Node ${log.node}: Suhu ${log.suhu}°C`;
+        }
+
+        return {
+          id,
+          cat,
+          title,
+          msg,
+          time: log.timestamp ? new Date(log.timestamp).toLocaleString('id-ID') : 'baru saja',
+          read: false,
+          flame: log.flame,
+          suhu: log.suhu,
+          ppm: log.ppm
+        };
+      })
       .sort((a, b) => new Date(b.time) - new Date(a.time))
       .slice(0, 50);
 
@@ -197,31 +203,9 @@ export function subscribeAlerts(callback) {
 // ============================================================
 
 export async function markAllAlertsRead() {
-  const alertsRef = ref(db, 'alerts_history');
-
-  return new Promise((resolve, reject) => {
-    onValue(alertsRef, async (snapshot) => {
-      const data = snapshot.val();
-      if (!data) {
-        resolve();
-        return;
-      }
-
-      const updates = {};
-      Object.entries(data).forEach(([id, alert]) => {
-        if (!alert.read) {
-          updates[`alerts_history/${id}/read`] = true;
-        }
-      });
-
-      try {
-        await update(ref(db), updates);
-        resolve();
-      } catch (e) {
-        reject(e);
-      }
-    }, { onlyOnce: true });
-  });
+  // Firebase RTDB logs sifatnya read-only dari sensor
+  // Jadi markAllAlertsRead nggak perlu update apa-apa
+  console.log('markAllAlertsRead called - logs are sensor data, skipping');
 }
 
 // ============================================================
