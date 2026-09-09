@@ -9,7 +9,7 @@
  *   /logs/{logId}           { node, suhu, ppm, flame, timestamp }
  */
 
-const API_BASE_URL = ""; // Kosongkan - pakai relative path ke Worker
+const API_BASE_URL = "https://apifireforest.chestaadabikarnen03.workers.dev";
 
 // ============================================================
 // DATA MOCK — fallback saat API gagal
@@ -69,7 +69,7 @@ const MOCK_ALERTS = [
 
 async function fetchAPI(path) {
   try {
-    const response = await fetch(`/api/${path}`);
+    const response = await fetch(`${API_BASE_URL}/${path}`);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
