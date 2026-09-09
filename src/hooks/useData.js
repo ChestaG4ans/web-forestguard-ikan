@@ -6,7 +6,7 @@ import {
 } from '../services/dataProvider';
 
 /** Telemetri live satu node — { suhu, kelembapan, gas, waktu } atau null. */
-export function useTelemetry(nodeId = 'N1') {
+export function useTelemetry(nodeId = 'N2') {
   const [data, setData] = useState(null);
   useEffect(() => subscribeTelemetry(nodeId, setData), [nodeId]);
   return data;
