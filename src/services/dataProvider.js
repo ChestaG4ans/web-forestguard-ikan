@@ -229,6 +229,40 @@ export function subscribeNodes(callback) {
 // ALERTS — riwayat notifikasi (Notifikasi, badge sidebar)
 // ============================================================
 
+// Local storage untuk menyimpan read status
+const READ_STATUS_KEY = 'fg-alerts-read';
+
+function getReadIds() {
+  try {
+    const stored = localStorage.getItem(READ_STATUS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function markAlertRead(alertId) {
+  const readIds = getReadIds();
+  if (!readIds.includes(alertId)) {
+    readIds.push(alertId);
+    localStorage.setItem(READ_STATUS_KEY, JSON.stringify(readIds));
+  }
+}
+
+function isAlertRead(alert) {
+  const readIds = getReadIds();
+  if (readIds.includes(alert.id)) return true;
+
+  // Cek juga timestamp cutoff
+  const cutoff = localStorage.getItem('fg-alerts-read-all-before');
+  if (cutoff) {
+    const alertTime = new Date(alert.time).getTime();
+    if (alertTime < parseInt(cutoff)) return true;
+  }
+
+  return alert.read || false;
+}
+
 export function subscribeAlerts(callback) {
   // Initial fetch
   fetchAPI('logs').then(data => {
@@ -268,7 +302,13 @@ export function subscribeAlerts(callback) {
         .sort((a, b) => new Date(b.time) - new Date(a.time))
         .slice(0, 50);
 
-      callback(alerts);
+      // Apply read status
+      const alertsWithRead = alerts.map(a => ({
+        ...a,
+        read: isAlertRead(a)
+      }));
+
+      callback(alertsWithRead);
     } else {
       callback([...MOCK_ALERTS]);
     }
@@ -313,7 +353,13 @@ export function subscribeAlerts(callback) {
         .sort((a, b) => new Date(b.time) - new Date(a.time))
         .slice(0, 50);
 
-      callback(alerts);
+      // Apply read status
+      const alertsWithRead = alerts.map(a => ({
+        ...a,
+        read: isAlertRead(a)
+      }));
+
+      callback(alertsWithRead);
     }
   }, 5000);
 
@@ -330,8 +376,10 @@ export function subscribeAlerts(callback) {
 // ============================================================
 
 export async function markAllAlertsRead() {
-  // Logs sifatnya read-only dari sensor
-  console.log('markAllAlertsRead called - logs are sensor data, skipping');
+  // Simpan timestamp saat ini sebagai cutoff
+  // Semua alert dengan waktu sebelum ini akan ditandai sudah dibaca
+  const now = Date.now();
+  localStorage.setItem('fg-alerts-read-all-before', now.toString());
 }
 
 // ============================================================
