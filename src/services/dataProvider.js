@@ -387,7 +387,7 @@ export async function markAllAlertsRead() {
 // ============================================================
 
 const THRESHOLD_KEY = 'fg-thresholds';
-const DEFAULT_THRESHOLDS = { suhuMax: 48, gasMax: 150, kelembapanMin: 30 };
+const DEFAULT_THRESHOLDS = { suhuMax: 48, gasMax: 150, flameThreshold: 0.5 };
 
 export function getThresholds() {
   try {

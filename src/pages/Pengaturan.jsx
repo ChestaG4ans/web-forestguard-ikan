@@ -8,7 +8,7 @@ import PageHeader from '../components/ui/PageHeader';
 const FIELDS = [
   { key: 'suhuMax', label: 'Batas Suhu Bahaya (°C)', help: 'Notifikasi aktif bila suhu melebihi nilai ini.' },
   { key: 'gasMax', label: 'Batas Gas Bahaya (PPM)', help: 'Notifikasi aktif bila kadar gas melebihi nilai ini.' },
-  { key: 'kelembapanMin', label: 'Batas Kelembapan Minimum (%)', help: 'Kelembapan di bawah nilai ini meningkatkan risiko kebakaran.' },
+  { key: 'flameThreshold', label: 'Threshold Flame (0-1)', help: 'Nilai ambang batas deteksi api. 0 = sangat sensitif, 1 = tidak sensitif.' },
 ];
 
 const PREFS = [
