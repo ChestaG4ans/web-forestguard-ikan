@@ -18,11 +18,11 @@ const BIRDS = [
 ];
 
 const SPONSORS = [
-  { src: '/img/sponsor-belmawa.png', alt: 'Belmawa', h: 27 },
   { src: '/img/sponsor-1.png', alt: 'Kemendikbud', h: 30 },
   { src: '/img/sponsor-38.png', alt: 'SIMBELMAWA', h: 18 },
-  { src: '/img/sponsor-4.png', alt: 'PKM', h: 25 },
+  { src: '/img/sponsor-belmawa.png', alt: 'Belmawa', h: 27 },
   { src: '/img/sponsor-5.png', alt: 'Universitas Gunadarma', h: 30 },
+  { src: '/img/sponsor-4.png', alt: 'PKM', h: 25 },
   { src: '/img/sponsor-6.png', alt: 'Diktisaintek Berdampak', h: 22 },
 ];
 
