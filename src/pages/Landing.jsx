@@ -106,19 +106,12 @@ export default function Landing() {
         {/* header */}
         <motion.header variants={fadeUp} className="flex shrink-0 items-center justify-between px-5 py-4 md:px-12">
           <div className="flex items-center gap-3">
-            {/* Logo dengan sponsor */}
-            <div className="flex flex-col items-center">
-              <div className="flex items-center gap-2">
-                <img src="/img/sponsor-belmawa.png" alt="Belmawa" className="h-[28px] object-contain" />
-                <img src="/img/sponsor-38.png" alt="SIMBELMAWA" className="h-[18px] object-contain" />
-                <img src="/img/sponsor-4.png" alt="PKM" className="h-[24px] object-contain" />
-                <img src="/img/sponsor-5.png" alt="UG" className="h-[28px] object-contain" />
-                <img src="/img/sponsor-38.png" alt="Diktisaintek" className="h-[18px] object-contain" />
-              </div>
-              <div className="mt-0.5 font-display text-[0.85rem] font-bold text-navy">
+            <img src="/img/logo-emblem.png" alt="FORESTGUARD-IKN" className="h-[42px] w-[42px] object-contain" />
+            <div className="leading-none">
+              <div className="font-display text-[0.98rem] font-bold text-navy">
                 FORESTGUARD<span className="text-gold">-IKN</span>
               </div>
-              <div className="text-[0.52rem] font-medium tracking-[0.15em] text-ok">PKM-KC 2026</div>
+              <div className="mt-1 font-mono text-[0.58rem] font-medium tracking-[0.2em] text-ok">PKM-KC 2026</div>
             </div>
           </div>
           <Link
@@ -143,22 +136,11 @@ export default function Landing() {
         <main className="flex flex-1 flex-col items-center justify-center px-6 pb-[clamp(150px,24vh,240px)] text-center">
           <motion.div variants={fadeUp} className="relative mb-[clamp(8px,1.6vh,18px)]">
             <div className="anim-glow absolute top-1/2 left-1/2 h-[230px] w-[230px] rounded-full bg-[radial-gradient(circle,rgba(210,175,82,0.28),transparent_68%)]" />
-            {/* Logo dengan sponsor logos */}
-            <div className="anim-float relative z-[1] flex flex-col items-center">
-              <img src="/img/logo-emblem.png" alt="Logo FORESTGUARD-IKN" className="h-[clamp(96px,15vh,158px)] w-auto object-contain" />
-              {/* Sponsor text */}
-              <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-                <span className="text-[0.65rem] font-bold tracking-[0.15em] text-[#9aa4ae]">DIDUKUNG OLEH</span>
-                <span className="text-[0.7rem] font-bold text-navy">Tut Wuri Handayani</span>
-                <span className="text-[0.7rem] font-bold text-navy">Diktisaintek Berdampak</span>
-              </div>
-              <div className="mt-1 flex items-center gap-3">
-                <img src="/img/sponsor-belmawa.png" alt="Belmawa" className="h-[22px] object-contain" />
-                <img src="/img/sponsor-38.png" alt="SIMBELMAWA" className="h-[16px] object-contain" />
-                <img src="/img/sponsor-4.png" alt="PKM" className="h-[20px] object-contain" />
-                <img src="/img/sponsor-5.png" alt="UG" className="h-[22px] object-contain" />
-              </div>
-            </div>
+            <img
+              src="/img/logo-emblem.png"
+              alt="Logo FORESTGUARD-IKN"
+              className="anim-float relative z-[1] h-[clamp(96px,15vh,158px)] w-[clamp(96px,15vh,158px)] object-contain"
+            />
           </motion.div>
           <motion.h1
             variants={fadeUp}
