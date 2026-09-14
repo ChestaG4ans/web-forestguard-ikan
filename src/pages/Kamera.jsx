@@ -413,20 +413,6 @@ export default function Kamera() {
         </motion.div>
       )}
 
-      {/* Instructions */}
-      <motion.div variants={fadeUp} className="mt-6 rounded-2xl border border-line bg-mist p-6">
-        <h3 className="mb-3 font-bold text-ink">📋 Cara Testing Kamera</h3>
-        <ol className="space-y-2 text-[0.85rem] text-moss">
-          <li><strong>1.</strong> Pastikan backend YOLO berjalan di terminal:</li>
-          <li className="ml-4 rounded bg-cream px-3 py-2 font-mono text-[0.8rem]">
-            cd backend && python main.py
-          </li>
-          <li><strong>2.</strong> Buka browser ke <span className="font-mono">{YOLO_API_URL}</span> untuk cek YOLO status</li>
-          <li><strong>3.</strong> Klik "Izinkan" saat browser minta akses kamera</li>
-          <li><strong>4.</strong> YOLO akan otomatis mendeteksi api/asap dari feed webcam setiap 3 detik</li>
-          <li><strong>5.</strong> Model sekarang menggunakan Object Detection dengan bounding box</li>
-        </ol>
-      </motion.div>
     </motion.div>
   );
 }
