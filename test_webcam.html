@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head><title>Webcam Test</title></head>
+<body style="background: black; margin: 0; padding: 20px;">
+<h1 style="color: white;">Webcam Test</h1>
+<video id="video" width="640" height="480" autoplay playsinline style="border: 3px solid green; background: #111;"></video>
+<script>
+navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+  .then(stream => {
+    document.getElementById('video').srcObject = stream;
+    document.body.innerHTML += '<p style="color:green">✅ Kamera aktif!</p>';
+  })
+  .catch(err => {
+    document.body.innerHTML += '<p style="color:red">❌ Error: ' + err.message + '</p>';
+  });
+</script>
+</body>
+</html>

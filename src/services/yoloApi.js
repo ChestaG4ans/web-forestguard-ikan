@@ -1,6 +1,6 @@
 /**
  * ForestGuard YOLO Detection API
- * Service untuk komunikasi dengan backend YOLO
+ * Service untuk komunikasi dengan backend YOLO (Object Detection)
  */
 
 const API_BASE_URL = import.meta.env.VITE_YOLO_API_URL || 'http://localhost:8000';
@@ -8,7 +8,7 @@ const API_BASE_URL = import.meta.env.VITE_YOLO_API_URL || 'http://localhost:8000
 /**
  * Deteksi api/asap dari file gambar
  * @param {File|HTMLVideoElement} file - File gambar atau element video
- * @returns {Promise<Object>} Hasil deteksi { class, confidence, danger, ... }
+ * @returns {Promise<Object>} Hasil deteksi { detections, fire_count, smoke_count, danger, ... }
  */
 export async function detectFromFile(file) {
   const formData = new FormData();
@@ -92,6 +92,12 @@ export async function getClasses() {
  * @returns {boolean} true jika danger
  */
 export function isDanger(result) {
+  if (!result) return false;
+  // Detection format: check fire_count dan smoke_count
+  if (result.fire_count !== undefined || result.smoke_count !== undefined) {
+    return (result.fire_count > 0 || result.smoke_count > 0);
+  }
+  // Classifier format (fallback)
   return result?.danger === true || result?.danger_level !== 'none';
 }
 
@@ -101,5 +107,45 @@ export function isDanger(result) {
  * @returns {string} Label Indonesia
  */
 export function getLabel(result) {
+  if (!result) return 'Mendeteksi...';
+
+  // Detection format
+  if (result.fire_count !== undefined || result.smoke_count !== undefined) {
+    if (result.fire_count > 0) return '🔥 Api Terdeteksi!';
+    if (result.smoke_count > 0) return '💨 Asap Terdeteksi!';
+    return '✅ Aman';
+  }
+
+  // Classifier format (fallback)
   return result?.label || result?.class || 'Unknown';
+}
+
+/**
+ * Helper: Get fire count dari hasil deteksi
+ * @param {Object} result - Hasil dari detectFromFile/detectFromUrl
+ * @returns {number} Jumlah api terdeteksi
+ */
+export function getFireCount(result) {
+  if (!result) return 0;
+  return result.fire_count || 0;
+}
+
+/**
+ * Helper: Get smoke count dari hasil deteksi
+ * @param {Object} result - Hasil dari detectFromFile/detectFromUrl
+ * @returns {number} Jumlah asap terdeteksi
+ */
+export function getSmokeCount(result) {
+  if (!result) return 0;
+  return result.smoke_count || 0;
+}
+
+/**
+ * Helper: Get danger level dari hasil deteksi
+ * @param {Object} result - Hasil dari detectFromFile/detectFromUrl
+ * @returns {string} critical/high/medium/low/none
+ */
+export function getDangerLevel(result) {
+  if (!result) return 'none';
+  return result.danger_level || 'none';
 }

@@ -1,13 +1,14 @@
 import { motion } from 'framer-motion';
 import {
   Video, VideoOff, RadioTower, Unplug, Expand,
-  AlertTriangle, Shield, RefreshCw, Camera, CameraOff, Monitor, Wifi, WifiOff
+  AlertTriangle, Shield, RefreshCw, Camera, CameraOff, Monitor, Wifi, WifiOff,
+  Flame, CloudFog
 } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNodes } from '../hooks/useData';
 import { stagger, fadeUp } from '../lib/motion';
 import PageHeader from '../components/ui/PageHeader';
-import { detectFromFile, checkApiStatus } from '../services/yoloApi';
+import { detectFromFile, checkApiStatus, getLabel, getFireCount, getSmokeCount, isDanger, getDangerLevel } from '../services/yoloApi';
 
 const YOLO_API_URL = 'http://localhost:8000';
 
@@ -40,6 +41,8 @@ function WebcamFeed({ onResult, intervalMs = 3000 }) {
         }
 
         streamRef.current = stream;
+
+        // Attach stream to video - wait for video element to be ready
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -51,6 +54,8 @@ function WebcamFeed({ onResult, intervalMs = 3000 }) {
           setError('Kamera ditolak. Izinkan akses kamera di browser.');
         } else if (err.name === 'NotFoundError') {
           setError('Kamera tidak ditemukan. Pastikan webcam terhubung.');
+        } else if (err.name === 'NotReadableError') {
+          setError('Kamera sedang digunakan aplikasi lain. Tutup aplikasi lain yang pakai webcam.');
         } else {
           setError(`Error: ${err.message}`);
         }
@@ -68,6 +73,13 @@ function WebcamFeed({ onResult, intervalMs = 3000 }) {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+
+  // Sync video element when stream is ready but video element might not be
+  useEffect(() => {
+    if (streamRef.current && videoRef.current && !videoRef.current.srcObject) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [streamRef.current]);
 
   // Capture frame and detect
   const runDetection = useCallback(async () => {
@@ -127,11 +139,20 @@ function WebcamFeed({ onResult, intervalMs = 3000 }) {
     );
   }
 
-  const danger = result?.danger;
-  const fireProb = result?.probabilities?.fire || 0;
-  const smokeProb = result?.probabilities?.smoke || 0;
-  const safeProb = result?.probabilities?.safe || 0;
-  const label = result?.label || 'Mendeteksi...';
+  const danger = isDanger(result);
+  const fireCount = getFireCount(result);
+  const smokeCount = getSmokeCount(result);
+  const dangerLevel = getDangerLevel(result);
+  const label = getLabel(result);
+
+  // Get danger color based on level
+  const getDangerColor = () => {
+    if (dangerLevel === 'critical') return 'bg-red-600';
+    if (dangerLevel === 'high') return 'bg-danger';
+    if (dangerLevel === 'medium') return 'bg-amber';
+    if (dangerLevel === 'low') return 'bg-yellow-500';
+    return 'bg-ok';
+  };
 
   return (
     <div className="absolute inset-0">
@@ -178,17 +199,23 @@ function WebcamFeed({ onResult, intervalMs = 3000 }) {
 
       {/* Detection results */}
       <div className="absolute bottom-4 left-4 z-20">
-        <div className={`rounded-xl px-4 py-3 text-white backdrop-blur-sm ${
-          danger ? 'bg-danger/90 animate-pulse' : 'bg-ok/90'
-        }`}>
+        <div className={`rounded-xl px-4 py-3 text-white backdrop-blur-sm ${getDangerColor()}`}>
           <div className="flex items-center gap-2 font-bold">
             {danger ? <AlertTriangle size={16} /> : <Shield size={16} />}
             <span>{label}</span>
+            {dangerLevel !== 'none' && dangerLevel !== 'none' && (
+              <span className="text-xs opacity-80">({dangerLevel})</span>
+            )}
           </div>
-          <div className="mt-1 flex gap-4 text-[0.8rem]">
-            <span>🔥 Api: {Math.round(fireProb * 100)}%</span>
-            <span>💨 Asap: {Math.round(smokeProb * 100)}%</span>
-            <span>✅ Aman: {Math.round(safeProb * 100)}%</span>
+          <div className="mt-2 flex gap-4 text-[0.85rem]">
+            <span className="flex items-center gap-1">
+              <Flame size={14} />
+              Api: {fireCount}x
+            </span>
+            <span className="flex items-center gap-1">
+              <CloudFog size={14} />
+              Asap: {smokeCount}x
+            </span>
           </div>
         </div>
       </div>
@@ -242,7 +269,7 @@ export default function Kamera() {
       <PageHeader
         eyebrow="Pemantauan Visual"
         title="Pemantauan Kamera"
-        description="Deteksi api/asap menggunakan YOLOv8 · Node 02 (Aktif)"
+        description="Deteksi api/asap menggunakan YOLOv8 Detection · Node 02 (Aktif)"
       >
         {/* YOLO Status Badge */}
         <div className={`flex items-center gap-2 rounded-full px-4 py-2 text-[0.8rem] font-bold ${
@@ -336,7 +363,7 @@ export default function Kamera() {
             {/* Footer */}
             <div className="flex items-center justify-between border-t border-line px-5 py-3.5">
               <div className="text-[0.75rem] text-sand">
-                Deteksi otomatis setiap 3 detik via YOLOv8
+                Deteksi otomatis setiap 3 detik via YOLOv8 Detection
               </div>
               <button className="flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-[0.82rem] font-bold text-white hover:brightness-110">
                 <Expand size={14} />
@@ -397,6 +424,7 @@ export default function Kamera() {
           <li><strong>2.</strong> Buka browser ke <span className="font-mono">{YOLO_API_URL}</span> untuk cek YOLO status</li>
           <li><strong>3.</strong> Klik "Izinkan" saat browser minta akses kamera</li>
           <li><strong>4.</strong> YOLO akan otomatis mendeteksi api/asap dari feed webcam setiap 3 detik</li>
+          <li><strong>5.</strong> Model sekarang menggunakan Object Detection dengan bounding box</li>
         </ol>
       </motion.div>
     </motion.div>
